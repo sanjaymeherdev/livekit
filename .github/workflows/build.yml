@@ -116,13 +116,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # ── macOS SDK build ────────────────────────────────────────────────────
+      - name: "[macOS] Install deps"
+        if: matrix.platform == 'macos' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          brew install openssl@3 ninja cmake
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+
       - name: "[macOS] Build SDK"
         if: matrix.platform == 'macos' && steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
-          cmake -S livekit-sdk-src -B livekit-sdk-src/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build
+          OPENSSL_PREFIX=$(brew --prefix openssl@3)
+          cmake -S livekit-sdk-src -B livekit-sdk-src/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DOPENSSL_ROOT_DIR=$OPENSSL_PREFIX -DOPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_PREFIX/lib/libcrypto.dylib -DOPENSSL_SSL_LIBRARY=$OPENSSL_PREFIX/lib/libssl.dylib -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build
           cmake --build livekit-sdk-src/build --parallel
           cmake --install livekit-sdk-src/build
 
@@ -148,16 +152,37 @@ jobs:
         if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
         run: echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
 
+      - name: "[Android] Build OpenSSL for Android"
+        if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}
+          sudo apt-get install -y curl perl
+
+          # Download OpenSSL source
+          curl -fsSL https://www.openssl.org/source/openssl-3.3.1.tar.gz -o openssl.tar.gz
+          tar -xzf openssl.tar.gz
+          cd openssl-3.3.1
+
+          export ANDROID_NDK_ROOT=$NDK_ROOT
+          export PATH=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+
+          # Build for arm64-v8a
+          ./Configure android-arm64 -D__ANDROID_API__=26 --prefix=$GITHUB_WORKSPACE/openssl-android/arm64-v8a no-shared no-tests
+          make -j$(nproc)
+          make install_sw
+          make clean
+
+          # Build for x86_64
+          ./Configure android-x86_64 -D__ANDROID_API__=26 --prefix=$GITHUB_WORKSPACE/openssl-android/x86_64 no-shared no-tests
+          make -j$(nproc)
+          make install_sw
+
       - name: "[Android] Build SDK arm64-v8a"
         if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}
-          cmake -S livekit-sdk-src -B livekit-sdk-src/build-arm64 \
-            -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-26 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build/android/arm64-v8a
+          OPENSSL_ARM=$GITHUB_WORKSPACE/openssl-android/arm64-v8a
+          cmake -S livekit-sdk-src -B livekit-sdk-src/build-arm64 -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR=$OPENSSL_ARM -DOPENSSL_INCLUDE_DIR=$OPENSSL_ARM/include -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_ARM/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_ARM/lib/libssl.a -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build/android/arm64-v8a
           cmake --build livekit-sdk-src/build-arm64 --parallel
           cmake --install livekit-sdk-src/build-arm64
 
@@ -165,12 +190,8 @@ jobs:
         if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}
-          cmake -S livekit-sdk-src -B livekit-sdk-src/build-x86_64 \
-            -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=x86_64 \
-            -DANDROID_PLATFORM=android-26 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build/android/x86_64
+          OPENSSL_X64=$GITHUB_WORKSPACE/openssl-android/x86_64
+          cmake -S livekit-sdk-src -B livekit-sdk-src/build-x86_64 -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-26 -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR=$OPENSSL_X64 -DOPENSSL_INCLUDE_DIR=$OPENSSL_X64/include -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_X64/lib/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_X64/lib/libssl.a -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build/android/x86_64
           cmake --build livekit-sdk-src/build-x86_64 --parallel
           cmake --install livekit-sdk-src/build-x86_64
 
