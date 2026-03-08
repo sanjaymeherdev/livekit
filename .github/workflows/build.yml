@@ -71,9 +71,7 @@ jobs:
         if: matrix.platform == 'linux' && steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y cmake ninja-build libssl-dev libpulse-dev \
-            libx11-dev libxcomposite-dev libxdamage-dev libxrandr-dev \
-            libpipewire-0.3-dev pkg-config
+          sudo apt-get install -y cmake ninja-build pkg-config libssl-dev openssl libpulse-dev libx11-dev libxcomposite-dev libxdamage-dev libxrandr-dev libxext-dev libxfixes-dev libpipewire-0.3-dev libasound2-dev libglib2.0-dev
 
       - name: "[Linux] Build SDK"
         if: matrix.platform == 'linux' && steps.sdk-cache.outputs.cache-hit != 'true'
@@ -86,15 +84,36 @@ jobs:
           cmake --install livekit-sdk-src/build
 
       # ── Windows SDK build ──────────────────────────────────────────────────
+      - name: "[Windows] Install deps"
+        if: matrix.platform == 'windows' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          choco install ninja openssl --no-progress -y
+          echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: "[Windows] Build SDK"
         if: matrix.platform == 'windows' && steps.sdk-cache.outputs.cache-hit != 'true'
-        shell: cmd
+        shell: pwsh
         run: |
-          cmake -S livekit-sdk-src -B livekit-sdk-src\build ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_INSTALL_PREFIX=%GITHUB_WORKSPACE%\livekit-sdk-build
-          cmake --build livekit-sdk-src\build --config Release --parallel
-          cmake --install livekit-sdk-src\build --config Release
+          $ErrorActionPreference = "Stop"
+          # Find VS installation for environment setup
+          $vsPath = & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" `
+            -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          # Import VS environment
+          Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
+
+          cmake -S livekit-sdk-src -B livekit-sdk-src/build `
+            -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL-Win64" `
+            -DCMAKE_INSTALL_PREFIX="$env:GITHUB_WORKSPACE/livekit-sdk-build"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build livekit-sdk-src/build --parallel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --install livekit-sdk-src/build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # ── macOS SDK build ────────────────────────────────────────────────────
       - name: "[macOS] Build SDK"
@@ -108,6 +127,12 @@ jobs:
           cmake --install livekit-sdk-src/build
 
       # ── Android SDK build (arm64-v8a + x86_64) ────────────────────────────
+      - name: "[Android] Install deps"
+        if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake ninja-build pkg-config libssl-dev openssl libasound2-dev libglib2.0-dev
+
       - name: "[Android] Set up Java 17"
         if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
         uses: actions/setup-java@v4
