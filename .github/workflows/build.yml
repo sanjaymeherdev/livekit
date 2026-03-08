@@ -108,13 +108,20 @@ jobs:
           cmake --install livekit-sdk-src/build
 
       # ── Android SDK build (arm64-v8a + x86_64) ────────────────────────────
+      - name: "[Android] Set up Java 17"
+        if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
       - name: "[Android] Set up NDK"
         if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
         uses: android-actions/setup-android@v3
 
       - name: "[Android] Install NDK"
         if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
-        run: echo "y" | sdkmanager "ndk;${{ env.NDK_VERSION }}"
+        run: echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
 
       - name: "[Android] Build SDK arm64-v8a"
         if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
@@ -257,13 +264,20 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y ninja-build
 
+      - name: "[Android] Set up Java 17"
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
       - name: "[Android] Set up NDK"
         if: matrix.platform == 'android'
         uses: android-actions/setup-android@v3
 
       - name: "[Android] Install NDK"
         if: matrix.platform == 'android'
-        run: echo "y" | sdkmanager "ndk;${{ env.NDK_VERSION }}"
+        run: echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
 
       - name: "[macOS] Set deployment target"
         if: matrix.platform == 'macos'
