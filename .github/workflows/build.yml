@@ -18,7 +18,7 @@ concurrency:
 #  Shared environment
 # ─────────────────────────────────────────────────────────────────────────────
 env:
-  LIVEKIT_SDK_VERSION: "0.3.2"           # LiveKit C++ SDK release tag
+  LIVEKIT_SDK_VERSION: "main"             # LiveKit C++ SDK (no release tags yet)
   GODOT_CPP_REF:       "4.4"
   NDK_VERSION:         "25.2.9519653"    # NDK r25c
   SCONS_CACHE_LIMIT:   "1024"            # MB
@@ -54,14 +54,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: livekit-sdk-build
-          key: livekit-sdk-${{ env.LIVEKIT_SDK_VERSION }}-${{ matrix.platform }}-${{ runner.arch }}
+          key: livekit-sdk-main-${{ matrix.platform }}-${{ runner.arch }}
 
       - name: Checkout LiveKit C++ SDK
         if: steps.sdk-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
           repository: livekit/client-sdk-cpp
-          ref: ${{ env.LIVEKIT_SDK_VERSION }}
+          ref: main
           path: livekit-sdk-src
           submodules: recursive
           fetch-depth: 0
