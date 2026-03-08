@@ -19,7 +19,7 @@ concurrency:
 # ─────────────────────────────────────────────────────────────────────────────
 env:
   LIVEKIT_SDK_VERSION: "0.3.2"           # LiveKit C++ SDK release tag
-  GODOT_CPP_REF:       "godot-4.2-stable"
+  GODOT_CPP_REF:       "4.4"
   NDK_VERSION:         "25.2.9519653"    # NDK r25c
   SCONS_CACHE_LIMIT:   "1024"            # MB
 
@@ -44,7 +44,7 @@ jobs:
           - platform: windows
             runner: windows-2022
           - platform: macos
-            runner: macos-13
+            runner: macos-14
           - platform: android
             runner: ubuntu-22.04
 
@@ -64,6 +64,7 @@ jobs:
           ref: ${{ env.LIVEKIT_SDK_VERSION }}
           path: livekit-sdk-src
           submodules: recursive
+          fetch-depth: 0
 
       # ── Linux SDK build ────────────────────────────────────────────────────
       - name: "[Linux] Install deps"
@@ -191,13 +192,13 @@ jobs:
             platform: macos
             target:   template_release
             arch:     universal
-            runner:   macos-13
+            runner:   macos-14
 
           - name:     macos-debug
             platform: macos
             target:   template_debug
             arch:     universal
-            runner:   macos-13
+            runner:   macos-14
 
           # ── Android ────────────────────────────────────────────────────────
           - name:      android-arm64-release
@@ -222,7 +223,8 @@ jobs:
       - name: Checkout extension repo
         uses: actions/checkout@v4
         with:
-          submodules: recursive   # pulls godot-cpp
+          fetch-depth: 0
+          submodules: recursive
 
       # ── Restore LiveKit SDK from previous job ──────────────────────────────
       - name: Download LiveKit SDK
