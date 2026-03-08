@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Keep GitHub Actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Keep submodules up to date (godot-cpp)
+  - package-ecosystem: "gitsubmodules"
+    directory: "/"
+    schedule:
+      interval: "monthly"

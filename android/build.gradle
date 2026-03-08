@@ -1,0 +1,49 @@
+// android/build.gradle  — Android Gradle plugin fragment
+// Place this file in your Godot Android plugin folder.
+// See: https://docs.godotengine.org/en/stable/tutorials/platform/android/android_plugin.html
+
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 34
+    ndkVersion "25.2.9519653"   // NDK r25c (minimum for LiveKit WebRTC)
+
+    defaultConfig {
+        minSdkVersion 26          // LiveKit Android SDK requires API 26+
+        targetSdkVersion 34
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -frtti -fexceptions"
+                abiFilters "arm64-v8a", "x86_64"
+                arguments "-DLIVEKIT_SDK=${System.getenv('LIVEKIT_SDK') ?: '../third_party/livekit-sdk'}"
+            }
+        }
+
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    buildTypes {
+        debug   { debuggable true }
+        release { minifyEnabled false }
+    }
+
+    // Required permissions for audio/video capture
+    // These are declared in the AndroidManifest fragment below.
+}
+
+dependencies {
+    // LiveKit Android SDK (for Java-side helpers, e.g. foreground service)
+    // The actual WebRTC/media work is done in C++ via the NDK.
+    implementation 'io.livekit:livekit-android-sdk:2.4.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+}

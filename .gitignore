@@ -1,0 +1,35 @@
+# ── Compiled extension libraries ─────────────────────────────────────────────
+godot_project/addons/livekit/bin/*.so
+godot_project/addons/livekit/bin/*.dll
+godot_project/addons/livekit/bin/*.dylib
+godot_project/addons/livekit/bin/*.framework/
+
+# ── SCons build artefacts ─────────────────────────────────────────────────────
+.scons-cache/
+.sconsign.dblite
+*.os
+*.o
+*.a
+
+# ── CMake / NDK build directories ────────────────────────────────────────────
+build/
+build-*/
+livekit-sdk-build/
+
+# ── LiveKit SDK source (fetched by CI; not committed) ────────────────────────
+third_party/livekit-sdk/
+
+# ── Godot editor generated files ─────────────────────────────────────────────
+.godot/
+*.import
+*.uid
+
+# ── OS noise ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

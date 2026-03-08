@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest.xml fragment for the LiveKit GDExtension plugin.
+  Godot merges this into the main app manifest automatically when the
+  plugin is enabled in the Export settings.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.yourcompany.godot.livekit">
+
+    <!-- ── Network ────────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+
+    <!-- ── Audio ──────────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- ── Camera (optional — only needed for video publishing) ─────── -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- ── Wake lock (keep CPU awake during call) ─────────────────────── -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- ── Foreground service (required on Android 14 for mic/camera) ── -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+
+    <application>
+        <!-- Foreground service for audio capture (Android 14+) -->
+        <service
+            android:name="com.yourcompany.godot.livekit.LiveKitForegroundService"
+            android:foregroundServiceType="microphone|camera"
+            android:exported="false" />
+    </application>
+
+</manifest>

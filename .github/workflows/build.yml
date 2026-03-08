@@ -1,0 +1,360 @@
+name: Build LiveKit GDExtension
+
+on:
+  push:
+    branches: [main, dev]
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:   # allow manual trigger from GitHub UI
+
+# Cancel in-progress runs on new push to same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Shared environment
+# ─────────────────────────────────────────────────────────────────────────────
+env:
+  LIVEKIT_SDK_VERSION: "0.3.2"           # LiveKit C++ SDK release tag
+  GODOT_CPP_REF:       "godot-4.2-stable"
+  NDK_VERSION:         "25.2.9519653"    # NDK r25c
+  SCONS_CACHE_LIMIT:   "1024"            # MB
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Jobs
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  1. Build LiveKit C++ SDK (cached per version + platform)
+  #     Runs once per platform; subsequent jobs restore from cache.
+  # ───────────────────────────────────────────────────────────────────────────
+  build-livekit-sdk:
+    name: "SDK • ${{ matrix.platform }}"
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runner: ubuntu-22.04
+          - platform: windows
+            runner: windows-2022
+          - platform: macos
+            runner: macos-13
+          - platform: android
+            runner: ubuntu-22.04
+
+    steps:
+      - name: Restore SDK cache
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: livekit-sdk-build
+          key: livekit-sdk-${{ env.LIVEKIT_SDK_VERSION }}-${{ matrix.platform }}-${{ runner.arch }}
+
+      - name: Checkout LiveKit C++ SDK
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: livekit/client-sdk-cpp
+          ref: ${{ env.LIVEKIT_SDK_VERSION }}
+          path: livekit-sdk-src
+          submodules: recursive
+
+      # ── Linux SDK build ────────────────────────────────────────────────────
+      - name: "[Linux] Install deps"
+        if: matrix.platform == 'linux' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake ninja-build libssl-dev libpulse-dev \
+            libx11-dev libxcomposite-dev libxdamage-dev libxrandr-dev \
+            libpipewire-0.3-dev pkg-config
+
+      - name: "[Linux] Build SDK"
+        if: matrix.platform == 'linux' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S livekit-sdk-src -B livekit-sdk-src/build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build
+          cmake --build livekit-sdk-src/build --parallel
+          cmake --install livekit-sdk-src/build
+
+      # ── Windows SDK build ──────────────────────────────────────────────────
+      - name: "[Windows] Build SDK"
+        if: matrix.platform == 'windows' && steps.sdk-cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          cmake -S livekit-sdk-src -B livekit-sdk-src\build ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_INSTALL_PREFIX=%GITHUB_WORKSPACE%\livekit-sdk-build
+          cmake --build livekit-sdk-src\build --config Release --parallel
+          cmake --install livekit-sdk-src\build --config Release
+
+      # ── macOS SDK build ────────────────────────────────────────────────────
+      - name: "[macOS] Build SDK"
+        if: matrix.platform == 'macos' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S livekit-sdk-src -B livekit-sdk-src/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build
+          cmake --build livekit-sdk-src/build --parallel
+          cmake --install livekit-sdk-src/build
+
+      # ── Android SDK build (arm64-v8a + x86_64) ────────────────────────────
+      - name: "[Android] Set up NDK"
+        if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: "[Android] Install NDK"
+        if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: echo "y" | sdkmanager "ndk;${{ env.NDK_VERSION }}"
+
+      - name: "[Android] Build SDK arm64-v8a"
+        if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}
+          cmake -S livekit-sdk-src -B livekit-sdk-src/build-arm64 \
+            -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build/android/arm64-v8a
+          cmake --build livekit-sdk-src/build-arm64 --parallel
+          cmake --install livekit-sdk-src/build-arm64
+
+      - name: "[Android] Build SDK x86_64"
+        if: matrix.platform == 'android' && steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}
+          cmake -S livekit-sdk-src -B livekit-sdk-src/build-x86_64 \
+            -DCMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=x86_64 \
+            -DANDROID_PLATFORM=android-26 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/livekit-sdk-build/android/x86_64
+          cmake --build livekit-sdk-src/build-x86_64 --parallel
+          cmake --install livekit-sdk-src/build-x86_64
+
+      - name: Upload SDK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: livekit-sdk-${{ matrix.platform }}
+          path: livekit-sdk-build/
+          retention-days: 1   # only needed within this workflow run
+
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  2. Build the GDExtension for all platforms
+  # ───────────────────────────────────────────────────────────────────────────
+  build-extension:
+    name: "Extension • ${{ matrix.name }}"
+    needs: build-livekit-sdk
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux ──────────────────────────────────────────────────────────
+          - name:     linux-x86_64-release
+            platform: linux
+            target:   template_release
+            arch:     x86_64
+            runner:   ubuntu-22.04
+
+          - name:     linux-x86_64-debug
+            platform: linux
+            target:   template_debug
+            arch:     x86_64
+            runner:   ubuntu-22.04
+
+          # ── Windows ────────────────────────────────────────────────────────
+          - name:     windows-x86_64-release
+            platform: windows
+            target:   template_release
+            arch:     x86_64
+            runner:   windows-2022
+
+          - name:     windows-x86_64-debug
+            platform: windows
+            target:   template_debug
+            arch:     x86_64
+            runner:   windows-2022
+
+          # ── macOS ──────────────────────────────────────────────────────────
+          - name:     macos-release
+            platform: macos
+            target:   template_release
+            arch:     universal
+            runner:   macos-13
+
+          - name:     macos-debug
+            platform: macos
+            target:   template_debug
+            arch:     universal
+            runner:   macos-13
+
+          # ── Android ────────────────────────────────────────────────────────
+          - name:      android-arm64-release
+            platform:  android
+            target:    template_release
+            android_arch: arm64v8
+            runner:    ubuntu-22.04
+
+          - name:      android-arm64-debug
+            platform:  android
+            target:    template_debug
+            android_arch: arm64v8
+            runner:    ubuntu-22.04
+
+          - name:      android-x86_64-release
+            platform:  android
+            target:    template_release
+            android_arch: x86_64
+            runner:    ubuntu-22.04
+
+    steps:
+      - name: Checkout extension repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive   # pulls godot-cpp
+
+      # ── Restore LiveKit SDK from previous job ──────────────────────────────
+      - name: Download LiveKit SDK
+        uses: actions/download-artifact@v4
+        with:
+          name: livekit-sdk-${{ matrix.platform }}
+          path: livekit-sdk-build/
+
+      # ── Python / SCons ─────────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SCons
+        run: pip install scons==4.6.0
+
+      # ── SCons cache (speeds up godot-cpp compilation) ──────────────────────
+      - name: SCons cache
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache/
+          key: scons-${{ matrix.name }}-${{ hashFiles('src/**', 'include/**', 'SConstruct') }}
+          restore-keys: scons-${{ matrix.name }}-
+
+      # ── Platform-specific setup ────────────────────────────────────────────
+      - name: "[Linux/Android] Install build deps"
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ninja-build
+
+      - name: "[Android] Set up NDK"
+        if: matrix.platform == 'android'
+        uses: android-actions/setup-android@v3
+
+      - name: "[Android] Install NDK"
+        if: matrix.platform == 'android'
+        run: echo "y" | sdkmanager "ndk;${{ env.NDK_VERSION }}"
+
+      - name: "[macOS] Set deployment target"
+        if: matrix.platform == 'macos'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> $GITHUB_ENV
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build (Linux / macOS / Windows)
+        if: matrix.platform != 'android'
+        env:
+          LIVEKIT_SDK: ${{ github.workspace }}/livekit-sdk-build
+          SCONS_CACHE: .scons-cache/
+          SCONS_CACHE_LIMIT: ${{ env.SCONS_CACHE_LIMIT }}
+        run: |
+          scons \
+            platform=${{ matrix.platform }} \
+            target=${{ matrix.target }} \
+            arch=${{ matrix.arch || 'x86_64' }} \
+            -j4
+
+      - name: Build (Android)
+        if: matrix.platform == 'android'
+        env:
+          LIVEKIT_SDK: ${{ github.workspace }}/livekit-sdk-build
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+          SCONS_CACHE: .scons-cache/
+          SCONS_CACHE_LIMIT: ${{ env.SCONS_CACHE_LIMIT }}
+        run: |
+          scons \
+            platform=android \
+            target=${{ matrix.target }} \
+            android_arch=${{ matrix.android_arch }} \
+            ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT \
+            -j4
+
+      # ── Upload compiled library ────────────────────────────────────────────
+      - name: Upload extension library
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdext-${{ matrix.name }}
+          path: godot_project/addons/livekit/bin/
+          if-no-files-found: error
+
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  3. Package — collect all platform libs into one addon zip
+  # ───────────────────────────────────────────────────────────────────────────
+  package:
+    name: "Package addon"
+    needs: build-extension
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout (for addon manifest + GDScript)
+        uses: actions/checkout@v4
+
+      - name: Download all extension libs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: gdext-*
+          path: collected-libs/
+          merge-multiple: true   # flatten into one directory
+
+      - name: Assemble addon folder
+        run: |
+          mkdir -p addon-package/addons/livekit/bin
+          # Copy .gdextension manifest and GDScript
+          cp godot_project/addons/livekit/livekit.gdextension \
+             addon-package/addons/livekit/
+          # Copy all compiled libraries
+          cp -r collected-libs/* addon-package/addons/livekit/bin/
+          # Copy example GDScript
+          cp godot_project/LiveKitVoiceChat.gd \
+             addon-package/addons/livekit/
+          # Print final layout
+          find addon-package -type f | sort
+
+      - name: Create addon zip
+        run: |
+          cd addon-package
+          zip -r ../livekit-gdextension-${{ github.ref_name }}.zip .
+
+      - name: Upload addon zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: livekit-gdextension-addon
+          path: livekit-gdextension-*.zip
+
+      # ── Create GitHub Release on tag push ──────────────────────────────────
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: livekit-gdextension-*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}

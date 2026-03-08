@@ -1,0 +1,86 @@
+name: CI Checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [dev]
+
+jobs:
+  # ── C++ static analysis with clang-tidy ──────────────────────────────────
+  lint:
+    name: clang-tidy
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-tidy-16 cmake ninja-build
+
+      - name: Generate compile_commands.json
+        run: |
+          cmake -S . -B build-lint \
+            -G Ninja \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DLIVEKIT_SDK=third_party/livekit-sdk \
+            -DGODOT_CPP_DIR=godot-cpp || true
+          # ignore cmake errors — we only need compile_commands.json
+
+      - name: Run clang-tidy
+        run: |
+          find src include -name "*.cpp" -o -name "*.h" | \
+          xargs clang-tidy-16 \
+            -p build-lint \
+            --checks="-*,clang-analyzer-*,cppcoreguidelines-*,modernize-*,performance-*,portability-*" \
+            --warnings-as-errors="" \
+            2>&1 | tee tidy-results.txt
+          # Non-fatal: report issues but don't block merge
+          echo "::notice::clang-tidy completed. See tidy-results.txt artifact."
+
+      - name: Upload tidy results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-results
+          path: tidy-results.txt
+
+  # ── Validate .gdextension manifest ────────────────────────────────────────
+  validate-manifest:
+    name: Validate .gdextension
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check manifest keys
+        run: |
+          python3 - <<'EOF'
+          import configparser, sys, pathlib
+
+          manifest = pathlib.Path("godot_project/addons/livekit/livekit.gdextension")
+          assert manifest.exists(), f"Missing: {manifest}"
+
+          cfg = configparser.ConfigParser()
+          cfg.read(manifest)
+
+          assert "configuration" in cfg, "Missing [configuration] section"
+          assert "entry_symbol" in cfg["configuration"], "Missing entry_symbol"
+          assert "libraries" in cfg, "Missing [libraries] section"
+
+          required_platforms = [
+              "linux.release.x86_64",
+              "windows.release.x86_64",
+              "android.release.arm64",
+          ]
+          for key in required_platforms:
+              assert key in cfg["libraries"], f"Missing library entry: {key}"
+
+          print("✅ .gdextension manifest is valid")
+          EOF

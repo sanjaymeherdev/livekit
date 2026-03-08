@@ -1,0 +1,23 @@
+[configuration]
+entry_symbol = "livekit_library_init"
+compatibility_minimum = "4.2"
+
+[libraries]
+; Desktop
+linux.debug.x86_64     = "res://addons/livekit/bin/liblivekit.linux.template_debug.x86_64.so"
+linux.release.x86_64   = "res://addons/livekit/bin/liblivekit.linux.template_release.x86_64.so"
+windows.debug.x86_64   = "res://addons/livekit/bin/liblivekit.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://addons/livekit/bin/liblivekit.windows.template_release.x86_64.dll"
+macos.debug             = "res://addons/livekit/bin/liblivekit.macos.template_debug.framework"
+macos.release           = "res://addons/livekit/bin/liblivekit.macos.template_release.framework"
+
+; Android
+android.debug.arm64    = "res://addons/livekit/bin/liblivekit.android.template_debug.arm64v8.so"
+android.release.arm64  = "res://addons/livekit/bin/liblivekit.android.template_release.arm64v8.so"
+android.debug.x86_64   = "res://addons/livekit/bin/liblivekit.android.template_debug.x86_64.so"
+android.release.x86_64 = "res://addons/livekit/bin/liblivekit.android.template_release.x86_64.so"
+
+[dependencies]
+; If additional shared libraries (.so) must be bundled alongside the extension on Android,
+; list them here. Example:
+; android.release.arm64 = { "res://addons/livekit/bin/libwebrtc.arm64.so": "" }
